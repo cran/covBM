@@ -1,0 +1,206 @@
+
+\documentclass[a4paper]{article}
+\usepackage{a4wide}
+%\setlength{\parskip}{0.7ex plus0.1ex minus0.1ex}
+%\setlength{\parindent}{0em}
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{verbatim}
+\usepackage[super,sort&compress]{natbib}
+
+\author{Oliver Stirrup\\
+\textit{MRC Clinical Trials Unit at UCL, University College London, London, UK}}
+\title{covBM: incorporating Brownian motion components into \textquoteleft nlme' models}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{concordance=TRUE}
+%\SweaveOpts{engine=R}
+
+%\VignetteIndexEntry{Description and usage of covBM for nlme models including Brownian motion}
+%\VignetteKeywords{lmeBM,nlmeBM}
+%\VignettePackage{covBM}
+%\VignetteDepends{nlme,covBM}
+
+\date{}
+\maketitle
+
+\section{Introduction}
+Longitudinal data are now widely analysed using linear mixed models, with \textquoteleft random slopes' models particularly common. These models can successfully account for the dependency that arises when repeated observations are made over time on each individual in a dataset, but make strong assumptions regarding the nature of this dependency. In the context of modelling CD4 cell counts over time in human immunodeficiency virus (HIV)-positive patients, it has been shown that the incorporation of non-stationary stochastic processes such as Brownian motion or integrated Ornstein--Uhlenbeck (IOU) processes into the modelling framework can lead to a very substantial improvement in model fit \cite{Taylor1994, Babiker2013}. Recently, the use of a fractional Brownian motion component has been shown to provide a further improvement\cite{Stirrup2015}. However, these extensions to the standard linear mixed model have not been widely used in practice, and are not readily implemented in current statistical software programs. The presence of such a component in a model for longitudinal data implies that the progress of the state of the underlying biological system for each individual does not follow a deterministic relationship with time, but rather follows an unpredictable stochastic path.
+
+  The \texttt{nlme} package\cite{nlme} for R allows the user to fit a wide range of linear and non-linear mixed effects models, with in-depth documentation and a wealth of examples provided in the accompanying book by Pinheiro and Bates\cite{Pinheiro2000}. As well as incorporating within-subject dependence resulting from the inclusion of \textquoteleft random effects' in a specified model, \texttt{nlme} also allows for a correlation structure to be imposed on the residual error terms (with estimation of any associated parameters) and for the residual error variance to be modelled as a function of variables in the data under consideration. It is even possible for the user to create their own correlation structures or variance functions for inclusion in the estimation of models in \texttt{nlme}.
+
+  It is possible to implement user-defined correlation structures in \texttt{nlme} to obtain point estimates of the parameters in linear and non-linear mixed effects models incorporating Brownian motion or IOU processes. However, some further additions to the original \texttt{nlme} code are required to obtain confidence intervals for the natural model parameters and to return a fitted model object that reports the natural parameters upon use of \texttt{print} or \texttt{summary}. The \texttt{covBM} package provides wrappers for the standard \texttt{nlme} functions in order to achieve these goals.
+
+  In Section \ref{sec:stat_models}, the characteristics of the statistical models under consideration are specified, and in Section \ref{sec:examples}, examples are provided to illustrate use of the functions provided in \texttt{covBM} to fit such models.
+
+\section{Model description} \label{sec:stat_models}
+
+\subsection{Scaled Brownian motion}
+Brownian motion (also known as a Wiener process) is a non-stationary stochastic process that constitutes a continuous-time generalisation of a simple random walk\cite{Grimmett2001}, in which successive increments are independent of the history of the process. When considered in terms of a given set of observation points, a scaled Brownian motion process, denoted $W_t$ at time $t$, is defined by the properties:
+\begin{align*}
+W_0&=0 \\
+W_t-W_s &\sim N(0,\kappa(t-s)) \text{ for } 0\le s<t.
+\end{align*}
+
+  The process starts at zero at time ($t$) zero, and increments of the process are stationary, independent (for disjoint periods of time) and normally distributed with mean zero and variance equal to the difference in time between observation points scaled by a constant factor $\kappa$. These conditions lead to the following characteristics:
+\begin{align*}
+\text{E}[W_t]&=0 \\
+\text{Var}[W_t]&=\kappa t \\
+\text{Cov}[W_s,W_t]&= \kappa * \text{min}(s,t).
+\end{align*}
+
+	The distribution of a set of $n$ observations relating to a given series of time points therefore follows a multivariate normal distribution with a mean vector of $n$ zeros and covariance matrix defined by the formulae given above.
+
+\subsection{Scaled fractional Brownian motion}
+Fractional Brownian motion represents a generalisation of a Brownian motion process in which increments for disjoint time periods are not constrained to be independent, although they do remain stationary. The process was introduced by Mandelbrot and van Ness\cite{Mandelbrot1968}. The characteristics of a fractional Brownian motion process are determined by an additional parameter, referred to as $H$ or \textquoteleft the Hurst index', that may take a value in the range (0,1). Standard Brownian motion represents a special case of fractional Brownian motion, corresponding to $H=\frac{1}{2}$. As for standard Brownian motion, the expectation of the value of the process is zero for all points in time.
+
+	When $H<\frac{1}{2}$, successive increments of the process are negatively correlated. This has the consequence, firstly, that the path of the trajectory appears \textquoteleft jagged' and, secondly, that realisations of the process tend to revert towards the mean of zero. For $H>\frac{1}{2}$, successive increments of the process are positively correlated. This means that the path of the process has a relatively \textquoteleft smooth' appearance, and also that realisations of the process tend to diverge away from zero.
+
+	As for Brownian motion, a scale parameter ($\kappa$) can be added to the standard definition of fractional Brownian motion, corresponding to the variance of the process at $t=1$. We may then characterise the properties of the process as follows:
+\begin{align*}
+W_0&=0 \\
+\text{E}[W_t]&=0 \\
+\text{Var}[W_t]&=\kappa \left|t \right| ^{2H} \\
+\text{Cov}[W_s,W_t]&= \frac{\kappa}{2} \left( \left|s \right| ^{2H} + \left|t \right| ^{2H} - \left|t-s \right| ^{2H} \right).
+\end{align*}
+
+\subsection{Integrated Ornstein--Uhlenbeck process}
+The IOU process is another non-stationary Gaussian stochastic process that has also been used to model CD4 counts in HIV-positive patients, a full description is provided by Taylor \textit{et al.}\cite{Taylor1994}. The process has the following characteristics:
+
+\begin{align*}
+W_0&=0 \\
+\text{E}[W_t]&=0 \\
+\text{Var}[W_t]&= \frac{\kappa}{\alpha^3} \left( \alpha t +  e^{-\alpha t} - 1 \right) \\
+\text{Cov}[W_s,W_t]&= \frac{\kappa}{2 \alpha^3} \left(  2\alpha * \text{min}(s,t) + e^{-\alpha t} + e^{-\alpha s} - 1 - e^{-\alpha \left| t-s \right|} \right).
+\end{align*}
+
+	We have used the symbol $\kappa$ to denote the variance scaling parameter ($\sigma^2$ was used by  Taylor \textit{et al.}\cite{Taylor1994}). The $\alpha$ parameter determines the extent to which the process reverts towards its mean value. For values of $\alpha$ approaching infinity, the process is equivalent to scaled Brownian motion, whereas for values of $\alpha$ approaching zero the process is equivalent to a random slopes model (without a random intercept)\cite{Taylor1994}.
+
+
+\subsection{Marginal distribution}
+
+For models incorporating Gaussian processes such as Brownian motion, the fact that the marginal distribution of the full vector of observations of the outcome variable is multivariate normal ($MVN$) means that parameter estimation can be achieved through adjustment of the methods used for standard linear mixed models. The linear mixed model for longitudinal data can be expressed in the form\cite{Laird1982}:
+\begin{align}
+\mathbf{y}_i &= \mathbf{X}_i \bm{\beta} + \mathbf{Z}_i \mathbf{b}_i + \mathbf{e}_i \label{eqn:lmm} \\
+\mathbf{b}_i &\sim MVN(\bm{0}, \, \bm{\Psi}) \notag\\
+\mathbf{e}_i &\sim MVN(\bm{0}, \, \mathbf{R}_i).\notag \end{align}
+
+  Here, $\mathbf{y}_i$ represents the vector of $n_i$ observations for the \textit{i}\textsuperscript{th} individual, $\mathbf{X}_i$ represents their design matrix for the \textquoteleft fixed effects' parameters $ \bm{\beta}$, $\mathbf{Z}_i$ represents the subset of the columns of the design matrix associated with the \textquoteleft random effects' for each individual $\mathbf{b}_i$ and $\mathbf{e}_i$ is the vector of residual errors for each measurement occasion. The vectors of random effects $\mathbf{b}_1,\mathbf{b}_2 ... \mathbf{b}_N$ and residual errors $\mathbf{e}_1,\mathbf{e}_2...\mathbf{e}_N$ for each of the $N$ individuals are independent of one another. It can be easily shown that this formulation leads to the following marginal distribution for $\mathbf{y}_i$:
+\begin{align*}
+\mathbf{y}_i &\sim MVN(\mathbf{X}_i \bm{\beta},\: \mathbf{Z}_i \bm{\Psi} \mathbf{Z}_i^{\mathrm{T}} \, + \, \mathbf{R}_i).
+\end{align*}
+
+	When linear mixed models are fitted to longitudinal data, it is common to assume that the residual errors for each observation within each individual, $\mathbf{e}_i$, are independent and with constant variance, $\sigma^2$, i.e. $\mathbf{R}_i$ as defined in (\ref{eqn:lmm}) is equal to $\sigma^2\mathbf{I}_{n_i}$. However, other forms for $\mathbf{R}_i$ are widely used, particularly for the analysis of longitudinal or spatial data, for example the exponential correlation structure\cite{Pinheiro2000}.
+
+	The remaining variability in the model, once the random effects have been accounted for, can also be subdivided into a component relating to a Gaussian process (independent of other model components) with expectation zero for all time points and an independent residual error for each observation. Defining $\bm{\Sigma_i}$ as the covariance matrix resulting from the chosen Gaussian process and set of time points $\mathbf{t}_i$ for the \textit{i}\textsuperscript{th} individual, the linear mixed model can then be expressed as:
+\begin{align}
+\mathbf{y}_i &= \mathbf{X}_i \bm{\beta} + \mathbf{Z}_i \mathbf{b}_i + W_i[\mathbf{t}_i] + \mathbf{e}_i \label{eqn:lmm_GP} \\
+\mathbf{b}_i &\sim MVN(\bm{0}, \, \bm{\Psi}) \notag\\
+W_i[\bm{t}_i] &\sim MVN(\bm{0}, \, \bm{\Sigma}_i) \notag\\
+\mathbf{e}_i &\sim MVN(\bm{0}, \, \sigma^2\mathbf{I}_{n_i}),\notag \end{align}
+
+with marginal distribution:
+\begin{align*}
+\mathbf{y}_i &\sim MVN(\mathbf{X}_i \bm{\beta},\; \mathbf{Z}_i \bm{\Psi} \mathbf{Z}_i^{\mathrm{T}} \, + \, \bm{\Sigma}_i \, + \, \sigma^2\mathbf{I}_{n_i}).
+\end{align*}
+
+	Although here we have focused on the marginal distribution for linear mixed models that incorporate a stochastic process, similar adjustment of the multivariate normal residual error distribution (i.e. $\mathbf{R}_i$) can also be made for non-linear mixed effects models.
+
+\section{Examples} \label{sec:examples}
+\subsection{lmeBM function}
+
+The \texttt{lmeBM} function is a wrapper for the \texttt{lme.formula} function from the \texttt{nlme} package, i.e. the \texttt{lme} function as used with a formula argument to specify the desired model; and the various arguments can be used in exactly the same way as the original \texttt{nlme} function. However, \texttt{lmeBM} allows Brownian motion, fractional Brownian motion or IOU process components to be added to a model.
+
+  Included in the \texttt{covBM} package is a dataset of serial CD4 counts obtained in HIV-positive children. This dataset is discussed in \textit{Data Analysis Using Regression and Multilevel/Hierarchical Models} by Andrew Gelman and Jennifer Hill\cite{Gelman2006}, and the original is available online from the home page of this book. In the present package, rows with missing values of \textquoteleft CD4CNT' (CD4 count on original scale), \textquoteleft visage' (age of child in years at given visit) or \textquoteleft baseage' (age of child in years at initial visit) have been removed.
+
+<<>>=
+library(covBM)
+head(cd4)
+@
+
+  We will consider models for square root-transformed CD4 counts \textquoteleft sqrtcd4', as this provides a better approximation to the normal distribution, in terms of the time elapsed in years since the initial visit \textquoteleft t'. The variable \textquoteleft newpid' provides unique patient identifiers. The \textquoteleft treatmnt' variable indicates whether that child was a control (==1) or given a zinc supplment (==2). However, this variable is not considered below.
+
+  First, we fit a standard \textquoteleft random slopes' linear mixed model, using the \texttt{lme} function from the \texttt{nlme} package. We choose here to obtain the maximum likelihood parameter estimates throughout, although restricted maximum likelihood estimation could also be implemented using the argument \texttt{method=="REML"}.
+
+<<>>=
+RS_model<-lme(sqrtcd4~t, data=cd4, random=~t|newpid, method="ML")
+RS_model
+@
+
+  We then fit a \textquoteleft random slopes' linear mixed model with additional inclusion of a scaled Brownian motion process. This requires the \texttt{covariance=covBM} argument using the \texttt{lmeBM} function, which exactly follows the \texttt{lme} syntax. The parameter estimates for the model do not converge when using the default optimiser in this dataset, but the model can be successfully fitted using the \texttt{control=list(opt="optim")} argument.
+
+<<>>=
+BM_model<-lmeBM(sqrtcd4~t, data=cd4, random=~t|newpid,
+                covariance=covBM(form=~t|newpid), method="ML",
+                control=list(opt="optim"))
+BM_model
+@
+
+  A further generalisation of the model to incorporate a fractional Brownian motion process can also be considered:
+
+<<>>=
+fBM_model<-lmeBM(sqrtcd4~t, data=cd4, random=~t|newpid,
+                covariance=covFracBM(form=~t|newpid), method="ML",
+                control=list(opt="optim"))
+fBM_model
+@
+
+  The fitted model objects created using the \texttt{lmeBM} function are of class \texttt{"lme"}, and so all the usual \texttt{nlme} Methods can be used to extract and view useful information. For example, \texttt{anova.lme} can be used to compare a set of fitted models:
+
+<<>>=
+anova(RS_model, BM_model, fBM_model)
+@
+
+  Both the likelihood ratio tests and a comparison of Akaike's information criterion (AIC) values suggest that the model including a Brownian motion process should be chosen above a standard random slopes model, but that there is not evidience to support the generalisation to a fractional Brownian motion process. This conclusion is also supported by inspection of the approximate 95\,\% confidence intervals of parameter estimates for the fractional Brownian motion model, as the confidence interval for the H-index is inclusive of 0.5 (the value for a standard Brownian motion process).
+
+<<>>=
+intervals(fBM_model)$corStruct
+@
+
+	The random slopes model incorporating an IOU process returns a high estimate of the $\alpha$ parameter, and does not show an improvement in fit relative to the scaled Brownian motion model.
+	
+<<>>=
+IOU_model<-lmeBM(sqrtcd4~t, data=cd4, random=~t|newpid,
+                covariance=covIOU(form=~t|newpid), method="ML",
+                control=list(opt="optim"))
+IOU_model
+anova(BM_model, IOU_model)
+@
+
+\subsection{nlmeBM function}
+The \texttt{nlmeBM} function is a wrapper for the \texttt{nlme.formula} function from the \texttt{nlme} package. As for \texttt{lmeBM}, \texttt{nlmeBM} allows Brownian motion or fractional Brownian motion components to be added to a non-linear mixed effects model.
+
+	As an illustrative example, we consider the \texttt{Milk} dataset available in the \texttt{nlme} package. This dataset is discussed in Chapter 5 of Diggle \textit{et al.}\cite{Diggle2002}, and contains measurements of the protein concentration of the milk of a number of cows assessed weekly following calving. The cows are divided into groups according to diet, but we ignore this for the sake of simplicity. We fit an asymptotic regression function, using \texttt{SSasmyp} from \texttt{nlme}, with three fixed effects parameters: \texttt{Asym} representing the horizontal asymptote for large values of the time variable, \texttt{R0} representing the response at time zero and \texttt{lrc} representing the natural logarithm of the rate constant (see Pinheiro and Bates \cite{Pinheiro2000} for further details). We consider an initial model with independent errors of constant variance and a second model with correlated errors following a continuous autoregressive process, both fit using the \texttt{nlme} function. Thirdly, we consider a model including a fractional Brownian motion process within each cow in addition to independent residual errors, using the \texttt{covariance=covFracBM} argument for \texttt{nlmeBM}. A subject-specific `random effect' is assigned to the asymptote parameter in each of the models.
+	
+<<>>=
+Model_1<-nlme(protein ~ SSasymp(Time, Asym, R0, lrc), data=Milk, 
+				fixed = Asym + R0 + lrc ~ 1, random = Asym ~ 1|Cow,
+            		start = c(Asym = 3.5, R0 = 4, lrc = -1))
+
+Model_2<-nlme(protein ~ SSasymp(Time, Asym, R0, lrc), data=Milk, 
+				fixed = Asym + R0 + lrc ~ 1, random = Asym ~ 1|Cow,
+				correlation=corCAR1(form=~Time|Cow),
+            		start = c(Asym = 3.5, R0 = 4, lrc = 0))
+
+Model_3<-nlmeBM(protein ~ SSasymp(Time, Asym, R0, lrc), data=Milk, 
+				fixed = Asym + R0 + lrc ~ 1, random = Asym ~ 1|Cow,
+				covariance=covFracBM(form=~Time|Cow),
+            		start = c(Asym = 3.5, R0 = 4, lrc = -1))
+            		
+AIC(Model_1)
+AIC(Model_2)
+AIC(Model_3)
+
+Model_3
+@
+
+	On the basis of the AIC values, the model including the fractional Brownian motion component provides the best fit to the data of those considered here.	
+
+
+\bibliographystyle{unsrt}
+\bibliography{covBMrefs}
+
+\end{document}

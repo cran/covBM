@@ -1,0 +1,2 @@
+
+The covBM package allows linear and non-linear mixed effects models that incorporate non-stationary stochastic processes to be fitted using the modelling and computational framework provided by the widely used 'nlme' package. The stochastic processes currently included in the covBM package are scaled Brownian motion, scaled fractional Brownian motion and the integrated Ornstein-Uhlenbeck process. A package vignette is provided with worked examples.
